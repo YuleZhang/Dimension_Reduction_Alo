@@ -6,22 +6,13 @@ from PIL import Image
 
 # 保留前 k 个奇异值
 def compression(image, k):
-    image2 = np.zeros_like(image)
+    imgae_cpart = np.zeros_like(image)
     for i in range(image.shape[2]):
         # svd版本
         U, S, Vt = svd(image[:,:,i])
-        image2[:,:,i] = U[:,:k].dot(np.diag(S[:k])).dot(Vt[:k,:])
+        imgae_cpart[:,:,i] = U[:,:k].dot(np.diag(S[:k])).dot(Vt[:k,:])
 
-
-    # eig_values,eig_vector = eig(image)
-    # print('eig_vector[:,1]',Vt[:,1].flatten())
-    # idx = eig_values.argsort()[::-1][:k]
-    # eigval = eig_values[idx]
-    # eigvector = eig_vector[:,idx]
-    # vi = eigvector/eigval.reshape(-1,k)
-    # image2 = np.dot(image,vi)
-
-    plt.imshow(image2)
+    plt.imshow(imgae_cpart)
     plt.title('k = %s' % k)
 
 if __name__ == "__main__":
