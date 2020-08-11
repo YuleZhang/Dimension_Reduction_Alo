@@ -2,7 +2,7 @@
 '''
 本代码实现基于约化密度矩阵的K2DKPCA算法来处理图片数据（图片来源于ORL人脸数据库），算法思路如下
 （1）图片数据的量子态映射
-（2）水平方向相邻像素等距约化
+（2）垂直方向相邻像素等距约化
 （3）图片恢复后采用KPCA提取
 （4）采用图片对比和准确率对比算法处理效果
 '''
@@ -17,15 +17,27 @@ import math
 import datetime
 import os
 
+# 图片维度
+ORG_ORG_IMG_SHAPE = ()
+
 # 读取图片文件数据集
 def readImgMat(path):
+    '''
+    path: 图片文件父目录
+    '''
+    global ORG_IMG_SHAPE
     img_data = []
     content_path = path
     for file in os.listdir(content_path):
         # 拼接完整文件路径
         cmp_path = os.path.join(content_path,file)
-        I = Image.open(cmp_path)
-        vec_img = list(I.convert('L').getdata()) # 将m*n的像素矩阵转为向量
+        I = Image.open(cmp_path).convert('L')
+        ORG_IMG_SHAPE = np.array(I).shape
+        vec_img = list(I.getdata()) # 将m*n的像素矩阵转为向量
+        test = np.array(I).flatten()
+        c = np.array(I).reshape(ORG_IMG_SHAPE).T
+        vec_img = c.flatten()
+
         tmp_img = np.array(vec_img) / 255  # 像素值归一化
         img_data.append(tmp_img)
     data = np.array(img_data)
@@ -33,17 +45,31 @@ def readImgMat(path):
 
 # 采用式3.6进行像素特征映射
 def resetPixel(pixel):
+    '''
+    pixel: 待处理像素
+    '''
     return [math.pow(math.cos(pixel*np.pi/2),2),math.pow(math.sin(pixel*np.pi/2),2)]
 
 # 矩阵特征映射
 def resetMatrix(pic_matrix: np.array) -> np.array:
-    
+    '''
+    pic_matrix: 待映射矩阵
+    '''
     n_samples, pixel = pic_matrix.shape
     new_mat = np.array([resetPixel(pixel) for sample in pic_matrix for pixel in sample])
     return new_mat.reshape(n_samples, -1,2)
 
 # 矩阵相邻像素张量合并
 def mergeTensor(pic_matrix: np.array,n_dims=2) -> np.array:
+    '''
+    pic_matrix: 待合并矩阵
+    ndims: 截断维数
+    '''
+    # print('this',ORG_IMG_SHAPE)
+    # print('this / 2',[i/2 for i in ORG_IMG_SHAPE])
+    new_img_row = int(ORG_IMG_SHAPE[0] / 2)
+    new_img_col = int(ORG_IMG_SHAPE[1] / 2)
+
     n_samples = len(pic_matrix) # 样本个数
     len_pixel = len(pic_matrix[0]) # 像素张量数目
     formal_pic = []
@@ -60,16 +86,19 @@ def mergeTensor(pic_matrix: np.array,n_dims=2) -> np.array:
             ans = product.reshape(1,-1).dot(eigvector.A) # 将像素张量进行等距层投影变换1*4 · 4*2
             tmp_pix.append(ans)
         formal_pic.append(tmp_pix)
+        
     transform_pic = np.array(formal_pic).reshape(n_samples,int(len_pixel/2),-1)
     return transform_pic
 
 # 恢复过程是将（example,N/2,2）维的数据重新恢复为(example,N/2)即原始像素格式
 def pixelRecovery(pic_matrix:np.array) -> np.array:
+    '''
+    pic_matrix: 待映射矩阵
+    '''
     # 这一过程基于cosx及sinx在（0,1）之间单调
-    # n_examples, N_pixel, k = pic_matrix.shape
     rcv_mat = []  # 定义恢复后的矩阵
     for example in pic_matrix:
-        acos = [pixel[0] for pixel in example]  
+        acos = [pixel[0] for pixel in example]
         tmp_rcv = np.arccos(acos)*2/np.pi
         rcv_mat.append(tmp_rcv)
     print('经过等距层张量合并将{0}的张量转化为{1}的形式，实现了降维'.format(pic_matrix.shape,np.array(rcv_mat).shape))
@@ -77,15 +106,23 @@ def pixelRecovery(pic_matrix:np.array) -> np.array:
 
 # 比较处理前后的图片信息
 def cmpImg(org_mat,prep_mat):
+    '''
+    org_mat: 原图矩阵
+    prep_mat: 待比较矩阵
+    '''
     # 将粗粒化处理后的图片显示出来
-    plt.figure(figsize=(20,10))
-    for i in range(0,8,2):
-        pos = 241+i
-        plt.subplot(pos)
-        plt.imshow(org_mat[i].reshape(112,92)*255,cmap ='gray')
-        pos = 241+i+1
-        plt.subplot(pos)
-        plt.imshow(prep_mat[i][:2576].reshape(56,46)*255,cmap ='gray',interpolation='nearest')
+    # plt.figure(figsize=(20,10))
+    # for i in range(0,8,2):
+    #     pos = 241+i
+    #     plt.subplot(pos)
+    #     plt.imshow(org_mat[i].reshape(ORG_IMG_SHAPE)*255,cmap ='gray')
+    #     pos = 241+i+1
+    #     plt.subplot(pos)
+    #     plt.imshow(prep_mat[i].reshape(56,46)*255,cmap ='gray')
+    # plt.figure(figsize=(20,10))
+    plt.imshow(org_mat[0].reshape(ORG_IMG_SHAPE).T*255,cmap ='gray')
+    plt.show()
+    plt.imshow(prep_mat[0].reshape(int(ORG_IMG_SHAPE[0]),int(ORG_IMG_SHAPE[1]/2)).T*255,cmap ='gray')
     plt.show()
 
 # 高斯核函数
@@ -159,7 +196,7 @@ def search_best_gamma(transform_data):
 
 # 主函数入口
 if __name__ == "__main__":
-    imgs_train = readImgMat('data/train')[:20]
+    imgs_train = readImgMat('data/')[:1]
     # imgs_test = read_img_mat('F:/Python-Project/PCA_Series/data/test')
     print('读取了{0}张图片，并将像素矩阵转化为张量存储，张量大小为{1}'.format(imgs_train.shape[0],imgs_train.shape))
 
@@ -190,6 +227,6 @@ if __name__ == "__main__":
         ans0 += cosineSimilarity(imgs_train[0],imgs_train[i])/4
         ans1 += cosineSimilarity(res[0],res[i])/4
         ans2 += cosineSimilarity(rds_res[0],rds_res[i])/4
-    print("KPCA，识别率为：{0}\t，处理耗时：{1}s".format(ans1,kpcaTimeSpan))
-    print("约化密度等距层处理+KPCA，识别率为：{0}\t，处理耗时：{1}s".format(ans2,newAlgoTimeSpan))
+    print("KPCA，识别率为：{0}\t，处理耗时：{1}ms".format(ans1,kpcaTimeSpan))
+    print("约化密度等距层处理+KPCA，识别率为：{0}\t，处理耗时：{1}ms".format(ans2,newAlgoTimeSpan))
 
